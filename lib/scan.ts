@@ -47,6 +47,84 @@ export function sampleImage(source: CanvasImageSource, canvas: HTMLCanvasElement
   }
   return stickers;
 }
+
+type Facelet = [Face, number];
+const CORNER_FACELETS: Facelet[][] = [
+  [["U", 8], ["R", 0], ["F", 2]], [["U", 6], ["F", 0], ["L", 2]],
+  [["U", 0], ["L", 0], ["B", 2]], [["U", 2], ["B", 0], ["R", 2]],
+  [["D", 2], ["F", 8], ["R", 6]], [["D", 0], ["L", 8], ["F", 6]],
+  [["D", 6], ["B", 8], ["L", 6]], [["D", 8], ["R", 8], ["B", 6]],
+];
+const CORNER_COLORS: Face[][] = [
+  ["U", "R", "F"], ["U", "F", "L"], ["U", "L", "B"], ["U", "B", "R"],
+  ["D", "F", "R"], ["D", "L", "F"], ["D", "B", "L"], ["D", "R", "B"],
+];
+const EDGE_FACELETS: Facelet[][] = [
+  [["U", 5], ["R", 1]], [["U", 7], ["F", 1]], [["U", 3], ["L", 1]], [["U", 1], ["B", 1]],
+  [["D", 5], ["R", 7]], [["D", 1], ["F", 7]], [["D", 3], ["L", 7]], [["D", 7], ["B", 7]],
+  [["F", 5], ["R", 3]], [["F", 3], ["L", 5]], [["B", 5], ["L", 3]], [["B", 3], ["R", 5]],
+];
+const EDGE_COLORS: Face[][] = [
+  ["U", "R"], ["U", "F"], ["U", "L"], ["U", "B"], ["D", "R"], ["D", "F"],
+  ["D", "L"], ["D", "B"], ["F", "R"], ["F", "L"], ["B", "L"], ["B", "R"],
+];
+
+function permutationParity(permutation: number[]) {
+  let inversions = 0;
+  for (let index = 0; index < permutation.length; index += 1) {
+    for (let next = index + 1; next < permutation.length; next += 1) {
+      if (permutation[index] > permutation[next]) inversions += 1;
+    }
+  }
+  return inversions % 2;
+}
+
+function validatePhysicalState(faces: ScanFace[]) {
+  const byCode = new Map(faces.map((face) => [face.code, face]));
+  const colorAt = ([face, index]: Facelet) => byCode.get(face)?.stickers[index];
+  const centers = Object.fromEntries(SCAN_FACES.map(({ code }) => [code, byCode.get(code)?.stickers[4]])) as Record<Face, string | undefined>;
+  const colorFace = (color: string | undefined) => (Object.keys(centers) as Face[]).find((face) => centers[face] === color);
+  const errors: string[] = [];
+  const cornerPermutation: number[] = [];
+  const cornerOrientation: number[] = [];
+  const edgePermutation: number[] = [];
+  const edgeOrientation: number[] = [];
+
+  for (const facelets of CORNER_FACELETS) {
+    const colors = facelets.map(colorAt);
+    let orientation = colors.findIndex((color) => colorFace(color) === "U" || colorFace(color) === "D");
+    if (orientation < 0) { errors.push("A corner is missing its top or bottom color."); continue; }
+    const first = colorFace(colors[(orientation + 1) % 3]);
+    const second = colorFace(colors[(orientation + 2) % 3]);
+    const piece = CORNER_COLORS.findIndex((colorsForPiece) => colorsForPiece[1] === first && colorsForPiece[2] === second);
+    if (piece < 0) { errors.push("A corner has a color combination that cannot exist on this cube."); continue; }
+    cornerPermutation.push(piece);
+    cornerOrientation.push(orientation % 3);
+  }
+
+  for (const facelets of EDGE_FACELETS) {
+    const first = colorFace(colorAt(facelets[0]));
+    const second = colorFace(colorAt(facelets[1]));
+    let piece = EDGE_COLORS.findIndex((colorsForPiece) => colorsForPiece[0] === first && colorsForPiece[1] === second);
+    let orientation = 0;
+    if (piece < 0) {
+      piece = EDGE_COLORS.findIndex((colorsForPiece) => colorsForPiece[0] === second && colorsForPiece[1] === first);
+      orientation = 1;
+    }
+    if (piece < 0) { errors.push("An edge has a color combination that cannot exist on this cube."); continue; }
+    edgePermutation.push(piece);
+    edgeOrientation.push(orientation);
+  }
+
+  if (errors.length) return errors;
+  if (new Set(cornerPermutation).size !== 8) errors.push("A corner piece appears more than once or another corner is missing.");
+  if (new Set(edgePermutation).size !== 12) errors.push("An edge piece appears more than once or another edge is missing.");
+  if (cornerOrientation.reduce((total, value) => total + value, 0) % 3 !== 0) errors.push("A single corner is twisted. Check the corner stickers and face orientation.");
+  if (edgeOrientation.reduce((total, value) => total + value, 0) % 2 !== 0) errors.push("A single edge is flipped. Check the edge stickers and face orientation.");
+  if (cornerPermutation.length === 8 && edgePermutation.length === 12 && permutationParity(cornerPermutation) !== permutationParity(edgePermutation)) errors.push("Two pieces are swapped. This arrangement cannot be reached by legal cube turns.");
+  return errors;
+}
+
 export function validateScan(faces: ScanFace[]) {
   const counts = new Map<string, number>();
   const errors: string[] = [];
@@ -60,5 +138,6 @@ export function validateScan(faces: ScanFace[]) {
     if (centers.slice(0, index).some((other) => color && other && colorDistance(color, other) < .025)) errors.push(`${faces[index].name} center is very similar to another center. Check the photo or correct its color.`);
   });
   if ([...counts.keys()].some((color) => !centers.includes(color))) errors.push("Every sticker must match one of your six center colors.");
+  if (errors.length === 0) errors.push(...validatePhysicalState(faces));
   return { valid: errors.length === 0, errors, counts };
 }
