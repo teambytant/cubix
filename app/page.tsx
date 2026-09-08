@@ -21,6 +21,7 @@ const moveRows = [
   { label: "LEFT / RIGHT", moves: ["L", "L'", "L2", "R", "R'", "R2"] as Move[] },
   { label: "FRONT / BACK", moves: ["F", "F'", "F2", "B", "B'", "B2"] as Move[] },
 ];
+const PRACTICE_STORAGE_KEY = "cubix-practice-state";
 
 function inverseMove(move: Move): Move {
   if (move.endsWith("2")) return move;
@@ -36,9 +37,30 @@ export default function Home() {
   const [queuedMoves, setQueuedMoves] = useState<Move[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [sequenceSpeed, setSequenceSpeed] = useState<"normal" | "scramble" | "reset">("normal");
+  const [hydrated, setHydrated] = useState(false);
   const activeMove = /^[URFDLB](?:2|')?$/.test(lastMove) ? lastMove as Move : undefined;
   const processingRef = useRef(false);
   const soundEnabledRef = useRef(soundEnabled);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(PRACTICE_STORAGE_KEY);
+    if (saved) {
+      try {
+        const practice = JSON.parse(saved) as { state?: typeof SOLVED_STATE; lastMove?: string; scrambleText?: string; soundEnabled?: boolean; moveHistory?: Move[] };
+        if (practice.state) setState(practice.state);
+        if (practice.lastMove) setLastMove(practice.lastMove);
+        if (practice.scrambleText) setScrambleText(practice.scrambleText);
+        if (typeof practice.soundEnabled === "boolean") setSoundEnabled(practice.soundEnabled);
+        if (practice.moveHistory) setMoveHistory(practice.moveHistory);
+      } catch { localStorage.removeItem(PRACTICE_STORAGE_KEY); }
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    localStorage.setItem(PRACTICE_STORAGE_KEY, JSON.stringify({ state, lastMove, scrambleText, soundEnabled, moveHistory }));
+  }, [hydrated, lastMove, moveHistory, scrambleText, soundEnabled, state]);
 
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;

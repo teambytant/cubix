@@ -20,6 +20,7 @@ const faceGuides = [
   { face: "F", name: "Front", axis: "front layer", meaning: "Turn the face looking at you. It changes the visible front stickers and both side edges." },
   { face: "B", name: "Back", axis: "back layer", meaning: "Turn the hidden back layer while the front of the cube stays your reference." },
 ];
+const LEARN_STORAGE_KEY = "cubix-learn-progress";
 
 type Level = { id: number; title: string; summary: string; task: string; moves?: Move[] };
 const levels: Level[] = [
@@ -38,10 +39,33 @@ export default function LearnPage() {
   const [lastInput, setLastInput] = useState("");
   const [feedback, setFeedback] = useState("");
   const [exploredMoves, setExploredMoves] = useState<Move[]>([]);
+  const [hydrated, setHydrated] = useState(false);
   const currentLevel = levels[level];
   const targetMove = currentLevel.moves?.[taskStep];
   const isBriefing = level === 0;
   const needsControlTour = level === 1 && exploredMoves.length < 18;
+
+  useEffect(() => {
+    const saved = localStorage.getItem(LEARN_STORAGE_KEY);
+    if (saved) {
+      try {
+        const progress = JSON.parse(saved) as { state?: typeof SOLVED_STATE; level?: number; taskStep?: number; completed?: number[]; soundEnabled?: boolean; lastInput?: string; exploredMoves?: Move[] };
+        if (progress.state) setState(progress.state);
+        if (typeof progress.level === "number" && levels[progress.level]) setLevel(progress.level);
+        if (typeof progress.taskStep === "number") setTaskStep(progress.taskStep);
+        if (progress.completed) setCompleted(progress.completed);
+        if (typeof progress.soundEnabled === "boolean") setSoundEnabled(progress.soundEnabled);
+        if (progress.lastInput) setLastInput(progress.lastInput);
+        if (progress.exploredMoves) setExploredMoves(progress.exploredMoves);
+      } catch { localStorage.removeItem(LEARN_STORAGE_KEY); }
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    localStorage.setItem(LEARN_STORAGE_KEY, JSON.stringify({ state, level, taskStep, completed, soundEnabled, lastInput, exploredMoves }));
+  }, [completed, exploredMoves, hydrated, lastInput, level, soundEnabled, state, taskStep]);
 
   function performMove(move: Move) {
     setState((value) => applyMove(value, move));
