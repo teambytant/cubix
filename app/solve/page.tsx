@@ -1,0 +1,5 @@
+import Link from "next/link";
+
+export default function SolvePage() {
+  return <main className="solve-page"><nav className="nav-shell"><Link className="brand" href="/">cube<span>sense</span><i /></Link><Link className="text-link" href="/">← Back home</Link></nav><section className="solve-shell"><div className="section-kicker font-mono">SOLVE MY CUBE / SETUP</div><h1>How should we<br /><em>meet</em> your cube?</h1><p>Choose the starting point that feels easiest. Both paths end in the same clear, move-by-move tutor.</p><div className="solve-options"><Link href="/solve/scan" className="solve-option"><span className="option-index font-mono">01</span><div><h2>Scan my cube <span>↗</span></h2><p>Use your phone camera or upload six photos. We&apos;ll rebuild the exact state.</p></div><b>→</b></Link><Link href="/learn" className="solve-option"><span className="option-index font-mono">02</span><div><h2>Start with a lesson <span>↗</span></h2><p>Learn the fundamentals on a solved digital cube before you tackle your own scramble.</p></div><b>→</b></Link></div></section></main>;
+}
