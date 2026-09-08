@@ -43,7 +43,8 @@ export default function LearnPage() {
   const currentLevel = levels[level];
   const targetMove = currentLevel.moves?.[taskStep];
   const isBriefing = level === 0;
-  const needsControlTour = level === 1 && exploredMoves.length < 18;
+  const controlTourComplete = level !== 1 || exploredMoves.length === 18;
+  const needsControlTour = level === 1 && !controlTourComplete;
 
   useEffect(() => {
     const saved = localStorage.getItem(LEARN_STORAGE_KEY);
@@ -71,11 +72,11 @@ export default function LearnPage() {
     setState((value) => applyMove(value, move));
     setLastInput(move);
     if (soundEnabled) playMoveSound(move);
-    setExploredMoves((value) => value.includes(move) ? value : [...value, move]);
+    const nextExploredMoves = exploredMoves.includes(move) ? exploredMoves : [...exploredMoves, move];
+    setExploredMoves(nextExploredMoves);
     if (isBriefing || !currentLevel.moves) return;
     if (needsControlTour) {
-      const exploredCount = exploredMoves.length + 1;
-      setFeedback(exploredCount === 18 ? "All controls explored. Now perform R, R', U, U' in order." : `${move} explored. Try every control above before the mastery task unlocks (${exploredCount}/18).`);
+      setFeedback(nextExploredMoves.length === 18 ? "All controls explored. The mastery task is unlocked below." : `${move} explored. Try every control above before the mastery task unlocks (${nextExploredMoves.length}/18).`);
       return;
     }
     if (move !== targetMove) {
