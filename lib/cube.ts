@@ -37,13 +37,14 @@ export function applyMove(state: CubeState, move: Move): CubeState {
   next[face] = rotateFace(next[face], turns);
   const cycle = cycles[face];
   for (let group = 0; group < turns; group += 1) {
+    const snapshot = cloneState(next);
     const carry = cycle[cycle.length - 1];
     for (let index = cycle.length - 1; index > 0; index -= 1) {
       const [targetFace, targetIndexes] = cycle[index];
       const [sourceFace, sourceIndexes] = cycle[index - 1];
-      targetIndexes.forEach((targetIndex, stickerIndex) => { next[targetFace][targetIndex] = next[sourceFace][sourceIndexes[stickerIndex]]; });
+      targetIndexes.forEach((targetIndex, stickerIndex) => { next[targetFace][targetIndex] = snapshot[sourceFace][sourceIndexes[stickerIndex]]; });
     }
-    carry[1].forEach((sourceIndex, stickerIndex) => { next[cycle[0][0]][cycle[0][1][stickerIndex]] = next[carry[0]][sourceIndex]; });
+    carry[1].forEach((sourceIndex, stickerIndex) => { next[cycle[0][0]][cycle[0][1][stickerIndex]] = snapshot[carry[0]][sourceIndex]; });
   }
   return next;
 }

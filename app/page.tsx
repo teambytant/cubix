@@ -53,7 +53,14 @@ export default function Home() {
       setQueuedMoves((current) => current.slice(1));
       processingRef.current = false;
       setIsProcessing(false);
-      if (queuedMoves.length === 1) setSequenceSpeed("normal");
+      if (queuedMoves.length === 1) {
+        if (sequenceSpeed === "reset") {
+          setState(cloneState(SOLVED_STATE));
+          setMoveHistory([]);
+          setLastMove("RESET");
+        }
+        setSequenceSpeed("normal");
+      }
     }, duration);
     return () => window.clearTimeout(timer);
   }, [queuedMoves, sequenceSpeed]);
