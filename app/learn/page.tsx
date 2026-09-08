@@ -2,8 +2,9 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { applyMove, cloneState, Move, SOLVED_STATE } from "@/lib/cube";
+import { advanceLesson, lessonStep, keyboardMove, completedLessons, exploredControls } from "@/lib/learn";
 import { playMoveSound } from "@/lib/cube-sound";
 
 const CubeCanvas = dynamic(() => import("@/components/CubeCanvas"), { ssr: false });
@@ -40,24 +41,35 @@ export default function LearnPage() {
   const [feedback, setFeedback] = useState("");
   const [exploredMoves, setExploredMoves] = useState<Move[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [replaying, setReplaying] = useState(false);
+  const doubleHeld = useRef(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const currentLevel = levels[level];
-  const targetMove = currentLevel.moves?.[taskStep];
+  const mastered = completed.includes(level) && !replaying;
+  const progressStep = lessonStep(currentLevel.moves, taskStep, mastered);
+  const targetMove = currentLevel.moves?.[progressStep];
+  const nextLevel = levels[level + 1];
   const isBriefing = level === 0;
-  const controlTourComplete = level !== 1 || exploredMoves.length === 18;
+  const controlTourComplete = completed.includes(1) || level !== 1 || exploredMoves.length === 18;
   const needsControlTour = level === 1 && !controlTourComplete;
 
   useEffect(() => {
     const saved = localStorage.getItem(LEARN_STORAGE_KEY);
     if (saved) {
       try {
-        const progress = JSON.parse(saved) as { state?: typeof SOLVED_STATE; level?: number; taskStep?: number; completed?: number[]; soundEnabled?: boolean; lastInput?: string; exploredMoves?: Move[] };
-        if (progress.state) setState(progress.state);
-        if (typeof progress.level === "number" && levels[progress.level]) setLevel(progress.level);
-        if (typeof progress.taskStep === "number") setTaskStep(progress.taskStep);
-        if (progress.completed) setCompleted(progress.completed);
+        const progress = JSON.parse(saved) as { state?: typeof SOLVED_STATE; level?: number; taskStep?: number; completed?: number[]; soundEnabled?: boolean; lastInput?: string; exploredMoves?: Move[]; replaying?: boolean };
+        if (progress.state && Object.keys(SOLVED_STATE).every((face) => { const stickers = progress.state![face as keyof typeof SOLVED_STATE]; return Array.isArray(stickers) && stickers.length === 9 && stickers.every((color) => typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color)); })) setState(progress.state);
+        const restoredCompleted = completedLessons(progress.completed);
+        const restoredLevel = Number.isInteger(progress.level) && levels[progress.level!] && (progress.level === 0 || restoredCompleted.includes(progress.level! - 1)) ? progress.level! : 0;
+        const restoredStep = lessonStep(levels[restoredLevel].moves, progress.taskStep ?? 0, false);
+        if (restoredLevel > 0 && restoredStep === levels[restoredLevel].moves?.length && !restoredCompleted.includes(restoredLevel)) restoredCompleted.push(restoredLevel);
+        setLevel(restoredLevel);
+        setTaskStep(restoredStep);
+        setCompleted(restoredCompleted);
+        setReplaying(progress.replaying === true && restoredStep < (levels[restoredLevel].moves?.length || 0));
         if (typeof progress.soundEnabled === "boolean") setSoundEnabled(progress.soundEnabled);
-        if (progress.lastInput) setLastInput(progress.lastInput);
-        if (progress.exploredMoves) setExploredMoves(progress.exploredMoves);
+        if (typeof progress.lastInput === "string") setLastInput(progress.lastInput);
+        setExploredMoves(exploredControls(progress.exploredMoves));
       } catch { localStorage.removeItem(LEARN_STORAGE_KEY); }
     }
     setHydrated(true);
@@ -65,70 +77,130 @@ export default function LearnPage() {
 
   useEffect(() => {
     if (!hydrated) return;
-    localStorage.setItem(LEARN_STORAGE_KEY, JSON.stringify({ state, level, taskStep, completed, soundEnabled, lastInput, exploredMoves }));
-  }, [completed, exploredMoves, hydrated, lastInput, level, soundEnabled, state, taskStep]);
+    localStorage.setItem(LEARN_STORAGE_KEY, JSON.stringify({ state, level, taskStep, completed, soundEnabled, lastInput, exploredMoves, replaying }));
+  }, [replaying, completed, exploredMoves, hydrated, lastInput, level, soundEnabled, state, taskStep]);
 
   function performMove(move: Move) {
+    if (!hydrated) return;
     setState((value) => applyMove(value, move));
     setLastInput(move);
     if (soundEnabled) playMoveSound(move);
     const nextExploredMoves = exploredMoves.includes(move) ? exploredMoves : [...exploredMoves, move];
     setExploredMoves(nextExploredMoves);
-    if (isBriefing || !currentLevel.moves) return;
+    if (isBriefing || mastered || !currentLevel.moves) return;
     if (needsControlTour) {
-      setFeedback(nextExploredMoves.length === 18 ? "All controls explored. The mastery task is unlocked below." : `${move} explored. Try every control above before the mastery task unlocks (${nextExploredMoves.length}/18).`);
+      setFeedback(nextExploredMoves.length === 18 ? "All controls explored. You are ready for the four-move challenge." : `${move} explored. Try each remaining control to unlock the challenge (${nextExploredMoves.length}/18).`);
       return;
     }
-    if (move !== targetMove) {
-      setTaskStep(0);
+    const nextStep = advanceLesson(currentLevel.moves, progressStep, move);
+    setTaskStep(nextStep);
+    if (nextStep === 0) {
       setFeedback(`That was ${move}. Start this task again with ${currentLevel.moves[0]}.`);
       return;
     }
-    const nextStep = taskStep + 1;
     if (nextStep === currentLevel.moves.length) {
+      setReplaying(false);
       setCompleted((value) => value.includes(level) ? value : [...value, level]);
       setFeedback(`Level ${level} mastered. You are ready for the next idea.`);
     } else {
-      setTaskStep(nextStep);
       setFeedback("Good. Now make the next intentional turn.");
     }
   }
 
+  function replayLevel() { setReplaying(true); setTaskStep(0); setFeedback(""); }
+
   function openLevel(id: number) {
     if (id > 0 && !completed.includes(id - 1)) return;
+    if (id === level) return;
+    setReplaying(false);
     setLevel(id);
     setTaskStep(0);
     setFeedback("");
   }
 
-  function startLevelOne() { setCompleted((value) => value.includes(0) ? value : [...value, 0]); setLevel(1); setTaskStep(0); setFeedback(""); }
+  function startLevelOne() { setReplaying(false); setCompleted((value) => value.includes(0) ? value : [...value, 0]); setLevel(1); setTaskStep(0); setFeedback(""); }
 
   useEffect(() => {
     function handleKey(event: KeyboardEvent) {
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-      const face = event.key.toUpperCase();
-      if (!["U", "D", "L", "R", "F", "B"].includes(face)) return;
+      if (event.code === "Digit2" || event.code === "Numpad2") { doubleHeld.current = true; event.preventDefault(); return; }
+      const move = keyboardMove(event.key, event.shiftKey, doubleHeld.current);
+      if (!move) return;
       event.preventDefault();
-      performMove(`${face}${event.shiftKey ? "'" : ""}` as Move);
+      performMove(move);
     }
+    function releaseDouble(event: KeyboardEvent) { if (event.code === "Digit2" || event.code === "Numpad2") doubleHeld.current = false; }
+    function resetDouble() { doubleHeld.current = false; }
     window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
+    window.addEventListener("keyup", releaseDouble);
+    window.addEventListener("blur", resetDouble);
+    return () => { window.removeEventListener("keydown", handleKey); window.removeEventListener("keyup", releaseDouble); window.removeEventListener("blur", resetDouble); };
   });
 
+  const remainingControls = keyboardRows.flatMap((row) => row.keys).filter((move) => !exploredMoves.includes(move));
+  const suggestedMove = needsControlTour ? remainingControls[0] : targetMove;
+  const moveGuide = faceGuides.find((guide) => guide.face === suggestedMove?.[0]);
+  const percent = needsControlTour ? Math.round(exploredMoves.length / 18 * 100) : Math.round(progressStep / (currentLevel.moves?.length || 1) * 100);
+  const concepts = [
+    { eyebrow: "YOUR FIRST LOOK", title: "Meet the pieces", text: "Centers have one color, edges have two, and corners have three. The centers tell you which color belongs on each face.", tip: "Drag the cube to look around. Before a sequence, return to the same front-facing view." },
+    { eyebrow: "ONE TURN AT A TIME", title: "A move and its opposite", text: "R turns the right face clockwise. R' turns it back. Try every face and variation, then practice a short sequence with the right and top layers.", tip: "Clockwise is always judged as if you were looking straight at the face you are turning." },
+    { eyebrow: "READ THE SYMBOLS", title: "One letter. Three moves.", text: "F is a clockwise quarter turn. F' is a counterclockwise quarter turn. F2 is a half turn: two quarter turns count as one instruction.", tip: "For F2, tap the F2 key once. On your keyboard, hold 2 and press F." },
+    { eyebrow: "KEEP YOUR REFERENCE", title: "Move layers, keep your front", text: "Use the left and top layers in sequence. The letters still name the same faces even when you drag the digital cube to inspect it.", tip: "Watch where a corner travels after each turn. This sequence does not need to leave the cube solved." },
+  ];
+  const concept = concepts[level];
+
+  useEffect(() => {
+    headingRef.current?.focus({ preventScroll: true });
+  }, [level]);
+
   return (
-    <main className="learn-page">
-      <nav className="nav-shell"><Link className="brand" href="/">cube<span>sense</span><i /></Link><Link className="text-link" href="/">← Back home</Link></nav>
+    <main className="learn-page learning-workspace">
+      <nav className="nav-shell"><Link className="brand" href="/">cube<span>sense</span><i /></Link><Link className="text-link" href="/">&larr; Back home</Link></nav>
       <section className="learn-shell">
-        <div className="curriculum-rail"><div className="section-kicker font-mono">YOUR LEARNING PATH</div><div className="level-list">{levels.map((item) => { const unlocked = item.id === 0 || completed.includes(item.id - 1); const done = completed.includes(item.id); return <button className={`level-item ${item.id === level ? "selected" : ""} ${done ? "done" : ""}`} disabled={!unlocked} key={item.id} onClick={() => openLevel(item.id)}><span className="level-number font-mono">0{item.id}</span><span><strong>{item.title}</strong><small>{item.summary}</small></span><i>{done ? "✓" : unlocked ? "→" : "×"}</i></button>; })}</div></div>
+        <nav className="curriculum-rail" aria-label="Learning path">
+          <div className="path-heading"><span className="section-kicker font-mono">THE FOUNDATIONS</span><span>{completed.filter((id) => id > 0).length} of 3 lessons mastered</span></div>
+          <div className="level-list">{levels.map((item) => {
+            const unlocked = item.id === 0 || completed.includes(item.id - 1);
+            const done = completed.includes(item.id);
+            return <button className={`level-item ${item.id === level ? "selected" : ""} ${done ? "done" : ""}`} disabled={!hydrated || !unlocked} key={item.id} onClick={() => openLevel(item.id)} aria-current={item.id === level ? "step" : undefined} title={!unlocked ? `Complete level ${item.id - 1} to unlock` : item.title}>
+              <span className="level-number font-mono">{done ? "\u2713" : `0${item.id}`}</span><span><small>{!unlocked ? "LOCKED" : done ? "MASTERED" : item.id === level ? "YOU ARE HERE" : "READY"}</small><strong>{item.title}</strong></span>
+            </button>;
+          })}</div>
+        </nav>
 
-        <div className="lesson-content">
-          <div className="lesson-content-heading"><div><div className="section-kicker font-mono">LEVEL 0{level} / {isBriefing ? "FOUNDATIONS" : "MASTERY TASK"}</div><h1>{isBriefing ? <>Start with<br /><em>the basics.</em></> : <>Learn to<br /><em>read</em> the cube.</>}</h1></div><span className="lesson-status font-mono">{completed.includes(level) ? "MASTERED" : "IN PROGRESS"}</span></div>
-          {isBriefing ? <div className="briefing-copy"><p className="lesson-intro">A Rubik&apos;s Cube is a puzzle of moving layers. Your goal is to return every face to one color. You do that by moving one face at a time while protecting the pieces you already understand.</p><div className="basics-grid"><article><span className="font-mono">01 / PIECES</span><h2>Centers set the color.</h2><p>Center pieces stay in the middle of each face. They tell you where that face belongs.</p></article><article><span className="font-mono">02 / LAYERS</span><h2>Edges have two colors.</h2><p>Corner pieces have three. Each piece has one correct home based on its colors.</p></article><article><span className="font-mono">03 / NOTATION</span><h2>Letters name faces.</h2><p>R means Right. A prime mark means counter-clockwise. 2 means turn twice.</p></article><article><span className="font-mono">04 / CONTROL</span><h2>Keep one front face.</h2><p>Hold the cube steady, choose a face, then make the exact turn the instruction asks for.</p></article></div><button className="button button-acid" onClick={startLevelOne}>Begin level 1 <span>→</span></button></div> : <><p className="lesson-intro">{currentLevel.summary} {level === 1 ? "First learn what every control means, then prove you can use a short sequence." : "Follow the task exactly. Accuracy matters more than speed."}</p>{level === 1 && <div className="control-tour"><div className="control-tour-head"><strong>Control tour</strong><span className="font-mono">{exploredMoves.length} / 18 explored</span></div><p>Tap each key once. The cube will show the physical layer that moves.</p><div className="face-guide-grid">{faceGuides.map((guide) => <article key={guide.face}><div><b>{guide.face}</b><span><strong>{guide.name} face</strong><small>{guide.axis}</small></span></div><p>{guide.meaning}</p><em>Prime <b>{guide.face}&apos;</b> reverses it. Double <b>{guide.face}2</b> turns twice.</em></article>)}</div></div>}<div className={`step-card ${needsControlTour ? "locked-task" : ""}`}><div className="step-count font-mono">TASK {taskStep + 1} OF {currentLevel.moves?.length}<span>{needsControlTour ? "CONTROL TOUR REQUIRED" : `${Math.round((taskStep / (currentLevel.moves?.length || 1)) * 100)}% COMPLETE`}</span></div><h2>{needsControlTour ? "Explore every control first." : currentLevel.task}</h2><div className="notation">{needsControlTour ? "?" : targetMove}</div><p>{feedback || (needsControlTour ? "The mastery task unlocks after you try U, D, L, R, F, B and each prime and double variation." : "Tap the matching key below or use your keyboard. A wrong move resets this task so you learn the sequence, not just the motion.")}</p><button className="button button-acid" disabled={needsControlTour} onClick={() => targetMove && performMove(targetMove)}>{needsControlTour ? "Explore controls" : `Perform ${targetMove}`} <span>→</span></button></div><div className="lesson-footer font-mono"><span>MASTERY</span><div><i style={{ width: `${(taskStep / (currentLevel.moves?.length || 1)) * 100}%` }} /></div><span>{taskStep}/{currentLevel.moves?.length}</span><button className="sound-toggle lesson-sound-toggle" onClick={() => setSoundEnabled((enabled) => !enabled)} aria-pressed={soundEnabled} aria-label={soundEnabled ? "Mute move sounds" : "Enable move sounds"}>{soundEnabled ? "◖" : "◌"}</button></div></>}
+        <header className="lesson-overview">
+          <div><div className="section-kicker font-mono">LEVEL 0{level} / {isBriefing ? "WELCOME" : `LESSON ${level} OF 3`}</div><h1 ref={headingRef} tabIndex={-1}>{currentLevel.title}<span>.</span></h1><p>{currentLevel.summary}</p></div>
+          <span className={`learning-status ${mastered ? "is-complete" : ""}`}>{!hydrated ? "Loading progress..." : replaying ? "Practice mode" : mastered ? "Mastered" : isBriefing ? "Start here" : needsControlTour ? "01 / Explore" : "02 / Practice"}</span>
+        </header>
+
+        <div className="lesson-workbench">
+          <div className="lesson-guidance">
+            <article className="concept-card">
+              <span className="section-kicker font-mono">{concept.eyebrow}</span><h2>{concept.title}</h2><p>{concept.text}</p>
+              {level === 2 && <div className="notation-legend">{[["F", "Quarter turn"], ["F'", "Reverse turn"], ["F2", "Half turn"]].map(([symbol, label]) => <div key={symbol}><b>{symbol}</b><span>{label}</span></div>)}</div>}
+              <aside className="lesson-tip"><strong>Keep in mind</strong><p>{concept.tip}</p></aside>
+            </article>
+
+            {isBriefing ? <article className="challenge-card briefing-checklist"><span className="section-kicker font-mono">HOW YOU'LL LEARN</span><h2>Look. Turn. Understand.</h2><ol><li><b>Explore the controls</b><span>See which layer moves and try its variations.</span></li><li><b>Follow four moves</b><span>A clear prompt guides you through each sequence.</span></li><li><b>Build on each lesson</b><span>Finish the sequence to unlock the next idea.</span></li></ol><button className="button button-acid" disabled={!hydrated} onClick={startLevelOne}>{completed.includes(1) ? "Revisit level 1" : "Begin level 1"}<span>&rarr;</span></button><small>Your progress is saved in this browser.</small></article> :
+              <article className={`challenge-card ${mastered ? "challenge-complete" : ""}`}>
+                <div className="challenge-heading"><span className="section-kicker font-mono">{mastered ? "LESSON COMPLETE" : needsControlTour ? "01 / CONTROL TOUR" : "02 / YOUR CHALLENGE"}</span><span>{percent}%</span></div>
+                <progress className="learning-progress" value={percent} max={100} aria-label={needsControlTour ? "Control tour progress" : "Challenge progress"} />
+                <h2>{mastered ? (nextLevel ? "Nicely done. Keep going." : "Foundations complete.") : needsControlTour ? "Get to know every turn." : "Four moves. One sequence."}</h2>
+                {mastered ? <p>{nextLevel ? `You've mastered ${currentLevel.title.toLowerCase()}. Next: ${nextLevel.summary.charAt(0).toLowerCase() + nextLevel.summary.slice(1)}` : "You can read moves, reverse turns, and keep your bearings. Revisit any lesson to build confidence."}</p> : needsControlTour ? <p>Try all 18 controls in any order. Checked keys are done; the suggested key is highlighted. {remainingControls.length} left to explore.</p> : <ol className="move-sequence" aria-label="Challenge sequence">{currentLevel.moves?.map((move, index) => <li key={index} className={index < progressStep ? "done" : index === progressStep ? "current" : ""} aria-current={index === progressStep ? "step" : undefined}><span>{index < progressStep ? "\u2713" : `0${index + 1}`}</span><b>{move}</b><small>{index < progressStep ? "Done" : index === progressStep ? "Now" : "Next"}</small></li>)}</ol>}
+                {!mastered && suggestedMove && <div className="next-turn"><b>{suggestedMove}</b><div><span>{needsControlTour ? "TRY THIS CONTROL" : "YOUR NEXT MOVE"}</span><strong>{moveGuide?.name} face / {suggestedMove.endsWith("2") ? "half turn" : suggestedMove.endsWith("'") ? "counterclockwise" : "clockwise"}</strong></div></div>}
+                <p className="lesson-feedback" role="status" aria-live="polite">{mastered ? "Your achievement is saved. Replays keep your unlocked lessons." : feedback || (needsControlTour ? "Tap a key beside the cube and watch its layer move." : "Use the highlighted key or the guided button. A wrong move restarts the four-move sequence.")}</p>
+                <div className="challenge-actions"><button className="button button-acid" disabled={!hydrated || (!mastered && !suggestedMove)} onClick={() => mastered ? (nextLevel ? openLevel(nextLevel.id) : replayLevel()) : suggestedMove && performMove(suggestedMove)}>{mastered ? (nextLevel ? `Continue to level ${nextLevel.id}` : "Practice again") : `Try ${suggestedMove}`}<span>&rarr;</span></button>{mastered && nextLevel && <button className="button button-quiet" onClick={replayLevel}>Practice again</button>}</div>
+              </article>}
+          </div>
+
+          <div className="practice-station">
+            <div className="stage-heading"><span className="section-kicker font-mono">{isBriefing ? "MEET YOUR CUBE" : "YOUR PRACTICE SPACE"}</span><button className="stage-sound" onClick={() => setSoundEnabled((enabled) => !enabled)} aria-pressed={soundEnabled} aria-label={soundEnabled ? "Mute move sounds" : "Enable move sounds"}>Sound {soundEnabled ? "on" : "off"}</button></div>
+            <div className="lesson-cube"><CubeCanvas state={state} move={isBriefing || mastered ? undefined : suggestedMove} /><div className="lesson-cube-footer font-mono"><span>DRAG TO LOOK AROUND</span><span>LAST TURN / {lastInput || "READY"}</span></div></div>
+            {!isBriefing ? <div className="visual-keyboard"><div className="keyboard-heading"><h2>Make your move</h2><span>{needsControlTour ? `${exploredMoves.length} / 18 explored` : mastered ? "Free practice" : `Move ${progressStep + 1} of 4`}</span></div>{keyboardRows.map((row) => <div className="keyboard-row" key={row.label}><span className="keyboard-row-label font-mono">{row.label}</span><div className="keyboard-keys">{row.keys.map((move) => <button disabled={!hydrated} className={`${!mastered && move === suggestedMove ? "active" : ""} ${level === 1 && exploredMoves.includes(move) ? "explored" : ""}`} key={move} onClick={() => performMove(move)} aria-label={`Perform ${move}${needsControlTour && exploredMoves.includes(move) ? ", already explored" : ""}`}>{move}{level === 1 && exploredMoves.includes(move) && <small aria-hidden="true">&#10003;</small>}</button>)}</div></div>)}<p className="keyboard-help">Keyboard: face letter for a turn / Hold <kbd>Shift</kbd> for prime / Hold <kbd>2</kbd> for double</p></div> : <div className="stage-welcome"><strong>A small puzzle. A few useful ideas.</strong><p>You don't need to solve it yet. Start by noticing the centers, edges, and corners.</p></div>}
+            <details className="face-reference"><summary>Face names &amp; notation <span>Quick reference</span></summary><div className="face-guide-grid">{faceGuides.map((guide) => <article key={guide.face}><div><b>{guide.face}</b><span><strong>{guide.name} face</strong><small>{guide.axis}</small></span></div><p>{guide.meaning}</p></article>)}</div><p>A letter turns clockwise, a prime (') reverses it, and 2 makes a half turn. View the turning face head-on to judge direction.</p></details>
+          </div>
         </div>
-
-        <div className="lesson-cube"><div className="font-mono lesson-tag">LEVEL 0{level} / PRACTICE STAGE</div><CubeCanvas state={state} move={targetMove} /><div className="lesson-cube-footer font-mono"><span>DRAG TO ROTATE</span><span>LAST MOVE / {lastInput || "READY"}</span></div></div>
-
-        {!isBriefing && <div className="visual-keyboard"><div className="keyboard-heading"><div><div className="section-kicker font-mono">MOVE INPUT</div><h2>Use your <em>hands.</em></h2></div><span className="font-mono">SHIFT = PRIME MOVE / 2 = DOUBLE</span></div>{keyboardRows.map((row) => <div className="keyboard-row" key={row.label}><span className="keyboard-row-label font-mono">{row.label}</span><div className="keyboard-keys">{row.keys.map((move) => <button className={`${move === targetMove ? "active" : ""} ${exploredMoves.includes(move) ? "explored" : ""}`} key={move} onClick={() => performMove(move)} aria-label={`Perform ${move} move`}>{move}{level === 1 && exploredMoves.includes(move) && <small>✓</small>}</button>)}</div></div>)}</div>}
       </section>
     </main>
   );
