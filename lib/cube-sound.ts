@@ -1,6 +1,7 @@
 import type { Move } from "./cube";
 
 let audioContext: AudioContext | null = null;
+let recordedSound: HTMLAudioElement | null = null;
 
 function getAudioContext() {
   if (typeof window === "undefined") return null;
@@ -9,7 +10,7 @@ function getAudioContext() {
   return audioContext;
 }
 
-export function playMoveSound(move: Move) {
+function playGeneratedSound(move: Move) {
   const context = getAudioContext();
   if (!context) return;
 
@@ -41,4 +42,16 @@ export function playMoveSound(move: Move) {
   frictionGain.connect(context.destination);
   friction.start(now);
   friction.stop(now + duration);
+}
+
+export function playMoveSound(move: Move) {
+  if (typeof window !== "undefined") {
+    recordedSound ??= new Audio("/audio/rubiks-turn.mp3");
+    recordedSound.currentTime = 0;
+    recordedSound.playbackRate = move.endsWith("2") ? 1.08 : 1;
+    void recordedSound.play().catch(() => playGeneratedSound(move));
+    return;
+  }
+
+  playGeneratedSound(move);
 }
