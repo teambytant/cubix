@@ -124,7 +124,7 @@ function Cubie({ state, move }: { state: CubeState; move?: Move }) {
   );
 }
 
-export default function CubeCanvas({ state, move, compact = false }: { state: CubeState; move?: Move; compact?: boolean }) {
+export default function CubeCanvas({ state, move, fast = false, compact = false }: { state: CubeState; move?: Move; fast?: boolean; compact?: boolean }) {
   const [displayState, setDisplayState] = useState(state);
   const [isAnimating, setIsAnimating] = useState(false);
   const previousState = useRef(state);
@@ -145,9 +145,9 @@ export default function CubeCanvas({ state, move, compact = false }: { state: Cu
 
     setDisplayState(state);
     setIsAnimating(true);
-    const timer = window.setTimeout(() => setIsAnimating(false), 430);
+    const timer = window.setTimeout(() => setIsAnimating(false), fast ? 125 : 430);
     return () => window.clearTimeout(timer);
-  }, [move, state]);
+  }, [fast, move, state]);
 
   return (
     <Canvas shadows dpr={[1, 1.7]} camera={{ position: [5.4, 4.2, 6.2], fov: compact ? 34 : 38 }}>
