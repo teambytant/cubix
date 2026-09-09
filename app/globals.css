@@ -186,6 +186,14 @@ footer p { color: #7e7d77; font-size: 12px; margin: 0 0 2px 13%; }
 .review-face-actions > span { color: #888780; font-size: 9px; margin-right: 8px; }
 .review-face-actions .button { min-width: 39px; padding: 9px 12px; }
 .review-face-actions .review-start-over { margin-left: 8px; }
+.rotate-face-actions { border-top: 0; margin-top: 10px; padding-top: 0; }
+.rotate-face-actions .button { min-width: 54px; }
+.net-face button.sticker-attention { animation: attention-pulse 1.25s ease-in-out infinite; box-shadow: inset 0 0 0 4px var(--orange), 0 0 0 2px var(--paper); position: relative; z-index: 1; }
+.validation-errors .issue-instruction { margin-bottom: 12px; }
+.validation-errors button { align-items: flex-start; background: transparent; border: 0; color: #5f5e58; cursor: pointer; display: flex; font-size: 12px; gap: 9px; line-height: 1.45; margin: 7px 0; padding: 7px 8px; text-align: left; width: 100%; }
+.validation-errors button span { align-items: center; border: 1px solid currentColor; border-radius: 50%; display: inline-flex; flex: 0 0 19px; font-family: 'DM Mono', monospace; font-size: 9px; height: 19px; justify-content: center; }
+.validation-errors button.issue-active { background: rgba(255,113,75,.12); color: var(--ink); }
+@keyframes attention-pulse { 50% { box-shadow: inset 0 0 0 4px var(--orange), 0 0 0 5px rgba(255,113,75,.25); } }
 
 /* Learning workspace: instruction and practice stay within the same view. */
 .learning-workspace .learn-shell { max-width: 1280px; padding: 24px 5vw 80px; }
@@ -392,6 +400,7 @@ footer p { color: #7e7d77; font-size: 12px; margin: 0 0 2px 13%; }
   .review-face-actions > span { flex-basis: 100%; }
   .review-face-actions .button { min-height: 42px; }
   .review-face-actions .review-start-over { flex: 1; margin-left: 0; }
+  .rotate-face-actions .button { min-width: 61px; }
   .validation-errors { margin-top: 28px; }
   .review-next { justify-content: space-between; margin-top: 34px; width: 100%; }
 

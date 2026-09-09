@@ -13,6 +13,7 @@ export default function ReviewPage() {
   const [faces, setFaces] = useState<ScanFace[]>([]);
   const [selected, setSelected] = useState(defaults[0]);
   const [selectedSticker, setSelectedSticker] = useState<number | null>(null);
+  const [activeIssue, setActiveIssue] = useState(0);
 
   useEffect(() => {
     const saved = localStorage.getItem(SCAN_STORAGE_KEY);
@@ -31,6 +32,11 @@ export default function ReviewPage() {
   const colors = Array.from(new Set([...faces.map((face) => face.stickers[4]), selected])).filter(Boolean);
   const stickers = labels.flatMap((code) => faces.find((item) => item.code === code)?.stickers || Array(9).fill("#d9d7d1"));
   const validation = validateScan(faces);
+  const highlighted = new Set((validation.issues[activeIssue]?.stickers || []).map((sticker) => `${sticker.face}:${sticker.index}`));
+
+  useEffect(() => {
+    if (activeIssue >= validation.issues.length) setActiveIssue(0);
+  }, [activeIssue, validation.issues.length]);
 
   function changeSticker(index: number) {
     const faceIndex = Math.floor(index / 9);
@@ -42,6 +48,18 @@ export default function ReviewPage() {
     setFaces(nextFaces);
     localStorage.setItem(SCAN_STORAGE_KEY, JSON.stringify(nextFaces));
     setSelectedSticker(index);
+    setActiveIssue(0);
+  }
+
+  function rotateFace(code: Face) {
+    const nextFaces = faces.map((face) => face.code === code ? { ...face, stickers: [face.stickers[6], face.stickers[3], face.stickers[0], face.stickers[7], face.stickers[4], face.stickers[1], face.stickers[8], face.stickers[5], face.stickers[2]] } : face);
+    setFaces(nextFaces);
+    localStorage.setItem(SCAN_STORAGE_KEY, JSON.stringify(nextFaces));
+    setActiveIssue(0);
+  }
+
+  function stickerClass(face: Face, index: number, flatIndex: number) {
+    return `${selectedSticker === flatIndex ? "sticker-selected " : ""}${highlighted.has(`${face}:${index}`) ? "sticker-attention" : ""}`;
   }
 
   function rescanFace(code: Face) {
@@ -66,14 +84,15 @@ export default function ReviewPage() {
           <div className={`valid-state ${validation.valid ? "valid" : "invalid"}`}><i /> {validation.valid ? "STATE LOOKS VALID" : "REVIEW NEEDED"}<br /><span className="font-mono">{validation.valid ? "COLOR COUNTS MATCH" : `${validation.errors.length} CHECKS FAILED`}</span></div>
         </div>
         <div className="net">
-          <div className="net-face net-u">{stickers.slice(0, 9).map((color, index) => <button key={index} style={{ background: color }} className={selectedSticker === index ? "sticker-selected" : ""} onClick={() => changeSticker(index)} aria-label={`Edit U sticker ${index + 1}`} />)}</div>
-          <div className="net-row">{[1, 2, 3, 4].map((face) => <div className="net-face" key={face}>{stickers.slice(face * 9, face * 9 + 9).map((color, index) => <button key={index} style={{ background: color }} className={selectedSticker === face * 9 + index ? "sticker-selected" : ""} onClick={() => changeSticker(face * 9 + index)} aria-label={`Edit face sticker ${index + 1}`} />)}</div>)}</div>
-          <div className="net-face net-d">{stickers.slice(45).map((color, index) => <button key={index} style={{ background: color }} className={selectedSticker === 45 + index ? "sticker-selected" : ""} onClick={() => changeSticker(45 + index)} aria-label={`Edit D sticker ${index + 1}`} />)}</div>
+          <div className="net-face net-u">{stickers.slice(0, 9).map((color, index) => <button key={index} style={{ background: color }} className={stickerClass("U", index, index)} onClick={() => changeSticker(index)} aria-label={`Edit U sticker ${index + 1}`} />)}</div>
+          <div className="net-row">{[1, 2, 3, 4].map((face) => { const code = labels[face]; return <div className="net-face" key={code}>{stickers.slice(face * 9, face * 9 + 9).map((color, index) => <button key={index} style={{ background: color }} className={stickerClass(code, index, face * 9 + index)} onClick={() => changeSticker(face * 9 + index)} aria-label={`Edit ${code} sticker ${index + 1}`} />)}</div>; })}</div>
+          <div className="net-face net-d">{stickers.slice(45).map((color, index) => <button key={index} style={{ background: color }} className={stickerClass("D", index, 45 + index)} onClick={() => changeSticker(45 + index)} aria-label={`Edit D sticker ${index + 1}`} />)}</div>
           <div className="net-labels font-mono">{labels.map((label) => <span key={label}>{label}</span>)}</div>
         </div>
         <div className="review-face-actions"><span className="font-mono">RESCAN A FACE</span>{labels.map((code) => <Link key={code} className="button button-quiet" href="/solve/scan" onClick={() => rescanFace(code)}>{code}</Link>)}<Link className="button button-quiet review-start-over" href="/solve/scan" onClick={startOver}>Start over</Link></div>
+        <div className="review-face-actions rotate-face-actions"><span className="font-mono">ROTATE A FACE</span>{labels.map((code) => <button key={code} className="button button-quiet" onClick={() => rotateFace(code)} aria-label={`Rotate ${code} face clockwise`}>{code} ↻</button>)}</div>
         <div className="color-picker"><span className="font-mono">EDIT COLOR</span>{colors.map((color) => <button key={color} style={{ background: color }} className={selected === color ? "selected" : ""} onClick={() => setSelected(color)} aria-label={`Choose color ${color}`} />)}<label>Add color <input type="color" value={selected} onChange={(event) => setSelected(event.target.value)} aria-label="Add a custom cube color" /></label></div>
-        {!validation.valid && <div className="validation-errors"><strong>What needs attention</strong>{validation.errors.slice(0, 3).map((error) => <p key={error}>{error}</p>)}</div>}
+        {!validation.valid && <div className="validation-errors"><strong>What needs attention</strong><p className="issue-instruction">The matching stickers are outlined in orange. Choose an item to focus its highlights.</p>{validation.issues.map((issue, index) => <button key={`${issue.message}-${index}`} className={index === activeIssue ? "issue-active" : ""} onClick={() => setActiveIssue(index)}><span>{index + 1}</span>{issue.message}</button>)}</div>}
         <Link className={`button button-dark review-next ${validation.valid ? "" : "disabled"}`} href={validation.valid ? "/learn" : "/solve/review"} onClick={(event) => { if (!validation.valid) event.preventDefault(); }}>{validation.valid ? "Build my solution" : "Correct the highlighted state"} <span>&rarr;</span></Link>
       </section>
     </main>

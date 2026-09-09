@@ -23,7 +23,9 @@ const legalFaces = SCAN_FACES.map((face) => ({ ...face, stickers: legalState[fac
 assert.equal(validateScan(legalFaces).valid, true, 'Legal move sequences pass the physical-state check');
 const flippedEdge = legalFaces.map((face) => ({ ...face, stickers: [...face.stickers] }));
 [flippedEdge.find((face) => face.code === "U").stickers[7], flippedEdge.find((face) => face.code === "F").stickers[1]] = [flippedEdge.find((face) => face.code === "F").stickers[1], flippedEdge.find((face) => face.code === "U").stickers[7]];
-assert.equal(validateScan(flippedEdge).valid, false, 'A single flipped edge is rejected');
+const flippedValidation = validateScan(flippedEdge);
+assert.equal(flippedValidation.valid, false, 'A single flipped edge is rejected');
+assert.ok(flippedValidation.issues.some((issue) => issue.stickers.some((sticker) => sticker.face === "U" && sticker.index === 7)), 'A flipped edge identifies its exact sticker');
 const twistedCorner = legalFaces.map((face) => ({ ...face, stickers: [...face.stickers] }));
 const u = twistedCorner.find((face) => face.code === "U").stickers;
 const r = twistedCorner.find((face) => face.code === "R").stickers;

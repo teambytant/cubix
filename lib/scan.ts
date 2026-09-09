@@ -49,6 +49,9 @@ export function sampleImage(source: CanvasImageSource, canvas: HTMLCanvasElement
 }
 
 type Facelet = [Face, number];
+export type StickerRef = { face: Face; index: number };
+export type ScanIssue = { message: string; stickers: StickerRef[] };
+const stickerRefs = (facelets: Facelet[]): StickerRef[] => facelets.map(([face, index]) => ({ face, index }));
 const CORNER_FACELETS: Facelet[][] = [
   [["U", 8], ["R", 0], ["F", 2]], [["U", 6], ["F", 0], ["L", 2]],
   [["U", 0], ["L", 0], ["B", 2]], [["U", 2], ["B", 0], ["R", 2]],
@@ -79,27 +82,30 @@ function permutationParity(permutation: number[]) {
   return inversions % 2;
 }
 
-function validatePhysicalState(faces: ScanFace[]) {
+function validatePhysicalState(faces: ScanFace[]): ScanIssue[] {
   const byCode = new Map(faces.map((face) => [face.code, face]));
   const colorAt = ([face, index]: Facelet) => byCode.get(face)?.stickers[index];
   const centers = Object.fromEntries(SCAN_FACES.map(({ code }) => [code, byCode.get(code)?.stickers[4]])) as Record<Face, string | undefined>;
   const colorFace = (color: string | undefined) => (Object.keys(centers) as Face[]).find((face) => centers[face] === color);
-  const errors: string[] = [];
+  const issues: ScanIssue[] = [];
   const cornerPermutation: number[] = [];
   const cornerOrientation: number[] = [];
+  const cornerPositions: Facelet[][] = [];
   const edgePermutation: number[] = [];
   const edgeOrientation: number[] = [];
+  const edgePositions: Facelet[][] = [];
 
   for (const facelets of CORNER_FACELETS) {
     const colors = facelets.map(colorAt);
     let orientation = colors.findIndex((color) => colorFace(color) === "U" || colorFace(color) === "D");
-    if (orientation < 0) { errors.push("A corner is missing its top or bottom color."); continue; }
+    if (orientation < 0) { issues.push({ message: "This corner is missing its top or bottom color.", stickers: stickerRefs(facelets) }); continue; }
     const first = colorFace(colors[(orientation + 1) % 3]);
     const second = colorFace(colors[(orientation + 2) % 3]);
     const piece = CORNER_COLORS.findIndex((colorsForPiece) => colorsForPiece[1] === first && colorsForPiece[2] === second);
-    if (piece < 0) { errors.push("A corner has a color combination that cannot exist on this cube."); continue; }
+    if (piece < 0) { issues.push({ message: "This corner has a color combination that cannot exist on this cube.", stickers: stickerRefs(facelets) }); continue; }
     cornerPermutation.push(piece);
     cornerOrientation.push(orientation % 3);
+    cornerPositions.push(facelets);
   }
 
   for (const facelets of EDGE_FACELETS) {
@@ -111,33 +117,43 @@ function validatePhysicalState(faces: ScanFace[]) {
       piece = EDGE_COLORS.findIndex((colorsForPiece) => colorsForPiece[0] === second && colorsForPiece[1] === first);
       orientation = 1;
     }
-    if (piece < 0) { errors.push("An edge has a color combination that cannot exist on this cube."); continue; }
+    if (piece < 0) { issues.push({ message: "This edge has a color combination that cannot exist on this cube.", stickers: stickerRefs(facelets) }); continue; }
     edgePermutation.push(piece);
     edgeOrientation.push(orientation);
+    edgePositions.push(facelets);
   }
 
-  if (errors.length) return errors;
-  if (new Set(cornerPermutation).size !== 8) errors.push("A corner piece appears more than once or another corner is missing.");
-  if (new Set(edgePermutation).size !== 12) errors.push("An edge piece appears more than once or another edge is missing.");
-  if (cornerOrientation.reduce((total, value) => total + value, 0) % 3 !== 0) errors.push("A single corner is twisted. Check the corner stickers and face orientation.");
-  if (edgeOrientation.reduce((total, value) => total + value, 0) % 2 !== 0) errors.push("A single edge is flipped. Check the edge stickers and face orientation.");
-  if (cornerPermutation.length === 8 && edgePermutation.length === 12 && permutationParity(cornerPermutation) !== permutationParity(edgePermutation)) errors.push("Two pieces are swapped. This arrangement cannot be reached by legal cube turns.");
-  return errors;
+  if (issues.length) return issues;
+  const duplicateCorners = cornerPermutation.flatMap((piece, position) => cornerPermutation.indexOf(piece) !== cornerPermutation.lastIndexOf(piece) ? cornerPositions[position] : []);
+  const duplicateEdges = edgePermutation.flatMap((piece, position) => edgePermutation.indexOf(piece) !== edgePermutation.lastIndexOf(piece) ? edgePositions[position] : []);
+  if (duplicateCorners.length) issues.push({ message: "These corner pieces repeat or another corner is missing.", stickers: stickerRefs(duplicateCorners) });
+  if (duplicateEdges.length) issues.push({ message: "These edge pieces repeat or another edge is missing.", stickers: stickerRefs(duplicateEdges) });
+  const twistedCorners = cornerOrientation.flatMap((orientation, position) => orientation ? cornerPositions[position] : []);
+  const flippedEdges = edgeOrientation.flatMap((orientation, position) => orientation ? edgePositions[position] : []);
+  if (cornerOrientation.reduce((total, value) => total + value, 0) % 3 !== 0) issues.push({ message: "The highlighted corner is twisted. Check these three stickers or rescan that face.", stickers: stickerRefs(twistedCorners) });
+  if (edgeOrientation.reduce((total, value) => total + value, 0) % 2 !== 0) issues.push({ message: "The highlighted edge is flipped. Check these two stickers or rescan that face.", stickers: stickerRefs(flippedEdges) });
+  if (cornerPermutation.length === 8 && edgePermutation.length === 12 && permutationParity(cornerPermutation) !== permutationParity(edgePermutation)) {
+    const misplaced = cornerPermutation.flatMap((piece, position) => piece !== position ? cornerPositions[position] : []).concat(edgePermutation.flatMap((piece, position) => piece !== position ? edgePositions[position] : []));
+    issues.push({ message: "The highlighted pieces have an impossible swap. Check their stickers or rescan their faces.", stickers: stickerRefs(misplaced) });
+  }
+  return issues;
 }
 
 export function validateScan(faces: ScanFace[]) {
   const counts = new Map<string, number>();
-  const errors: string[] = [];
-  if (faces.length !== 6 || new Set(faces.map((face) => face.code)).size !== 6 || SCAN_FACES.some(({ code }) => !faces.some((face) => face.code === code))) errors.push("Capture all six faces once.");
-  faces.forEach((face) => { if (face.stickers.length !== 9) errors.push(`${face.name} needs nine stickers.`); });
+  const issues: ScanIssue[] = [];
+  const allStickers = (predicate: (color: string) => boolean) => faces.flatMap((face) => face.stickers.flatMap((color, index) => predicate(color) ? [{ face: face.code, index }] : []));
+  if (faces.length !== 6 || new Set(faces.map((face) => face.code)).size !== 6 || SCAN_FACES.some(({ code }) => !faces.some((face) => face.code === code))) issues.push({ message: "Capture all six faces once.", stickers: [] });
+  faces.forEach((face) => { if (face.stickers.length !== 9) issues.push({ message: `${face.name} needs nine stickers.`, stickers: face.stickers.map((_, index) => ({ face: face.code, index })) }); });
   faces.flatMap((face) => face.stickers).forEach((color) => counts.set(color, (counts.get(color) || 0) + 1));
   const centers = faces.map((face) => face.stickers[4]);
-  if (new Set(centers).size !== 6) errors.push("The six center stickers must have different colors.");
+  if (new Set(centers).size !== 6) issues.push({ message: "The highlighted center stickers must all be different colors.", stickers: faces.map((face) => ({ face: face.code, index: 4 })) });
   centers.forEach((color, index) => {
-    if (counts.get(color) !== 9) errors.push(`Expected 9 stickers matching the ${faces[index].name.toLowerCase()} center (${color}), found ${counts.get(color) || 0}.`);
-    if (centers.slice(0, index).some((other) => color && other && colorDistance(color, other) < .025)) errors.push(`${faces[index].name} center is very similar to another center. Check the photo or correct its color.`);
+    if (counts.get(color) !== 9) issues.push({ message: `The ${faces[index].name.toLowerCase()} center color appears ${counts.get(color) || 0} times; it needs 9. Check the highlighted stickers.`, stickers: allStickers((sticker) => sticker === color) });
+    if (centers.slice(0, index).some((other) => color && other && colorDistance(color, other) < .025)) issues.push({ message: `${faces[index].name} center is too similar to another center. Check this center color.`, stickers: [{ face: faces[index].code, index: 4 }] });
   });
-  if ([...counts.keys()].some((color) => !centers.includes(color))) errors.push("Every sticker must match one of your six center colors.");
-  if (errors.length === 0) errors.push(...validatePhysicalState(faces));
-  return { valid: errors.length === 0, errors, counts };
+  const unknownColors = [...counts.keys()].filter((color) => !centers.includes(color));
+  if (unknownColors.length) issues.push({ message: "These stickers do not match any center color. Select the correct center color or add the missing color.", stickers: allStickers((sticker) => unknownColors.includes(sticker)) });
+  if (issues.length === 0) issues.push(...validatePhysicalState(faces));
+  return { valid: issues.length === 0, errors: issues.map((issue) => issue.message), issues, counts };
 }
