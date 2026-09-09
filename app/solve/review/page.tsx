@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { FACE_COLORS, Face } from "@/lib/cube";
 import { SCAN_FACES, SCAN_STORAGE_KEY, ScanFace, validateScan } from "@/lib/scan";
+import Wordmark from "@/components/Wordmark";
 
 const defaults = Object.values(FACE_COLORS);
 const labels: Face[] = ["U", "L", "F", "R", "B", "D"];
@@ -55,7 +56,7 @@ export default function ReviewPage() {
   return (
     <main className="review-page">
       <nav className="nav-shell">
-        <Link className="brand" href="/">cube<span>sense</span><i /></Link>
+        <Link className="brand" href="/"><Wordmark /></Link>
         <Link className="text-link" href="/solve/scan">&larr; Back to scan</Link>
       </nav>
       <section className="review-shell">

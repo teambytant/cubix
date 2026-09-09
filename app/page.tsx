@@ -6,12 +6,13 @@ import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { applyMoves, cloneState, Move, scramble, SOLVED_STATE } from "@/lib/cube";
 import { playMoveSound } from "@/lib/cube-sound";
+import Wordmark from "@/components/Wordmark";
 
 const CubeCanvas = dynamic(() => import("@/components/CubeCanvas"), { ssr: false });
 
 const featureCards = [
   { number: "01", title: "See the move", text: "Every algorithm is translated into a clear, animated action. No notation wall, no guessing.", accent: "#d7ef37" },
-  { number: "02", title: "Scan your scramble", text: "Capture six faces. CubeSense rebuilds the exact state so your digital tutor matches your real cube.", accent: "#ff714b" },
+  { number: "02", title: "Scan your scramble", text: "Capture six faces. Cubix rebuilds the exact state so your digital tutor matches your real cube.", accent: "#ff714b" },
   { number: "03", title: "Build the instinct", text: "Learn why each turn matters with visual cues that make the method stick beyond one solve.", accent: "#3986f7" },
 ];
 
@@ -132,7 +133,7 @@ export default function Home() {
   return (
     <main>
       <nav className="nav-shell">
-        <Link className="brand" href="/">cube<span>sense</span><i /></Link>
+        <Link className="brand" href="/"><Wordmark /></Link>
         <div className="nav-links"><a href="#method">Method</a><a href="#practice">Practice</a><Link href="/learn">Learn mode <span>↗</span></Link></div>
         <Link className="nav-cta" href="/solve">Scan your cube <span>↗</span></Link>
       </nav>
@@ -141,7 +142,7 @@ export default function Home() {
         <div className="hero-copy">
           <p className="eyebrow"><span className="pulse-dot" /> A visual tutor for the real world</p>
           <h1>See every<br /><em>move.</em></h1>
-          <p className="hero-lede">Learn the Rubik&apos;s Cube by seeing what happens next. Or scan your scramble and let CubeSense turn the impossible into a sequence you can feel.</p>
+          <p className="hero-lede">Learn the Rubik&apos;s Cube by seeing what happens next. Or scan your scramble and let Cubix turn the impossible into a sequence you can feel.</p>
           <div className="hero-actions"><Link className="button button-dark" href="/learn">Start learning <span>↗</span></Link><Link className="text-link" href="/solve">I have a scrambled cube <span>→</span></Link></div>
           <div className="hero-note font-mono">01 / 03 &nbsp;&nbsp; TURNING CONFUSION INTO CLARITY</div>
         </div>
@@ -156,8 +157,8 @@ export default function Home() {
       <section className="ticker"><div>LEARN BY DOING <span>✳</span> YOUR CUBE, YOUR PACE <span>✳</span> NO MYSTERY MOVES <span>✳</span> LEARN BY DOING <span>✳</span></div></section>
 
       <section className="intro" id="method">
-        <div className="section-kicker font-mono">THE CUBESENSE METHOD</div>
-        <div className="intro-grid"><h2>The cube is<br />not the <span>problem.</span></h2><p>Most tutorials teach you to memorize a language. We teach you to read a shape. CubeSense makes the relationship between a piece, a turn, and your goal impossible to miss.</p></div>
+        <div className="section-kicker font-mono">THE CUBIX METHOD</div>
+        <div className="intro-grid"><h2>The cube is<br />not the <span>problem.</span></h2><p>Most tutorials teach you to memorize a language. We teach you to read a shape. Cubix makes the relationship between a piece, a turn, and your goal impossible to miss.</p></div>
         <div className="feature-grid">{featureCards.map((card) => <motion.article className="feature" key={card.number} whileHover={{ y: -8 }}><div className="feature-top"><span className="font-mono">{card.number}</span><i style={{ background: card.accent }} /></div><h3>{card.title}</h3><p>{card.text}</p><span className="feature-arrow">↗</span></motion.article>)}</div>
       </section>
 
@@ -168,7 +169,7 @@ export default function Home() {
 
       <section className="scan-band"><div className="scan-copy"><div className="section-kicker font-mono">WHEN YOU&apos;RE READY</div><h2>Your scramble.<br /><span>Mapped.</span></h2><p>Use your camera to recreate a physical cube in seconds. We&apos;ll check the state, flag anything suspicious, then guide every turn from there.</p><Link className="button button-dark" href="/solve">Scan my cube <span>↗</span></Link></div><div className="scan-visual"><div className="scan-ring"><div className="scan-square"><span /><span /><span /><span /><b>ALIGN FACE</b></div></div><div className="font-mono scan-meta">6 FACES / 54 STICKERS / 1 SOLUTION</div></div></section>
 
-      <footer><Link className="brand" href="/">cube<span>sense</span><i /></Link><p>See every move.</p><div className="font-mono footer-meta">BUILT FOR CURIOUS HUMANS<br />© 2026 CUBESENSE</div></footer>
+      <footer><Link className="brand" href="/"><Wordmark /></Link><p>See every move.</p><div className="font-mono footer-meta">BUILT FOR CURIOUS HUMANS<br />© 2026 CUBIX</div></footer>
     </main>
   );
 }

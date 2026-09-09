@@ -3,7 +3,7 @@ import type { Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CubeSense | See every move",
+  title: "Cubix | See every move",
   description: "A visual tutor for solving your Rubik's Cube.",
 };
 

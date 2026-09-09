@@ -1,8 +1,8 @@
-# CubeSense
+# Cubix
 
-Created and started by **Builder Kay**, the original creator of CubeSense.
+Created and started by **Builder Kay**, the original creator of Cubix.
 
-CubeSense is an open-source interactive Rubik's Cube visual tutor. It combines a 3D cube, move-by-move instruction, a progressive beginner curriculum, browser-based scan/review tools, sound feedback, and persistent local progress.
+Cubix is an open-source interactive Rubik's Cube visual tutor. It combines a 3D cube, move-by-move instruction, a progressive beginner curriculum, browser-based scan/review tools, sound feedback, and persistent local progress.
 
 > The project is an active prototype. The cube engine, visual tutor, scan workflow, and UI are working foundations for continued development; a production solver and full physical-state validator are still extension points.
 

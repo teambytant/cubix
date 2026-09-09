@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { applyMove, cloneState, Move, SOLVED_STATE } from "@/lib/cube";
 import { advanceLesson, lessonStep, keyboardMove, completedLessons, exploredControls } from "@/lib/learn";
 import { playMoveSound } from "@/lib/cube-sound";
+import Wordmark from "@/components/Wordmark";
 
 const CubeCanvas = dynamic(() => import("@/components/CubeCanvas"), { ssr: false });
 const keyboardRows = [
@@ -156,7 +157,7 @@ export default function LearnPage() {
 
   return (
     <main className="learn-page learning-workspace">
-      <nav className="nav-shell"><Link className="brand" href="/">cube<span>sense</span><i /></Link><Link className="text-link" href="/">&larr; Back home</Link></nav>
+      <nav className="nav-shell"><Link className="brand" href="/"><Wordmark /></Link><Link className="text-link" href="/">&larr; Back home</Link></nav>
       <section className="learn-shell">
         <nav className="curriculum-rail" aria-label="Learning path">
           <div className="path-heading"><span className="section-kicker font-mono">THE FOUNDATIONS</span><span>{completed.filter((id) => id > 0).length} of 3 lessons mastered</span></div>
