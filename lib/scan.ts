@@ -1,6 +1,6 @@
 import { Face } from "./cube";
 
-export type ScanFace = { code: Face; name: string; stickers: string[]; samples?: string[]; source?: string; orientation?: number };
+export type ScanFace = { code: Face; name: string; stickers: string[]; samples?: string[]; source?: string; orientation?: number; autoCorrected?: boolean };
 export const SCAN_STORAGE_KEY = "cubix-scan-state";
 export const SCAN_FACES: { code: Face; name: string }[] = [
   { code: "F", name: "Front" }, { code: "R", name: "Right" }, { code: "B", name: "Back" },
@@ -9,17 +9,25 @@ export const SCAN_FACES: { code: Face; name: string }[] = [
 const rgb = (hex: string) => [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
 const hex = (values: number[]) => "#" + values.map((value) => Math.round(value).toString(16).padStart(2, "0")).join("");
 
-// OKLab separates lightness from chroma so shadows have less influence than hue.
-function lab(color: string) {
-  const [r, g, b] = rgb(color).map((value) => { const s = value / 255; return s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4; });
+// OKLab separates hue/chroma from brightness. Phone cameras often darken one
+// face or add a highlight, but the sticker hue usually remains dependable.
+function labFromRgb(values: number[]) {
+  const [r, g, b] = values.map((value) => { const s = value / 255; return s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4; });
   const l = Math.cbrt(.4122214708 * r + .5363325363 * g + .0514459929 * b);
   const m = Math.cbrt(.2119034982 * r + .6806995451 * g + .1073969566 * b);
   const s = Math.cbrt(.0883024619 * r + .2817188376 * g + .6299787005 * b);
   return [.2104542553 * l + .793617785 * m - .0040720468 * s, 1.9779984951 * l - 2.428592205 * m + .4505937099 * s, .0259040371 * l + .7827717662 * m - .808675766 * s];
 }
+function lab(color: string) { return labFromRgb(rgb(color)); }
 export function colorDistance(a: string, b: string) {
   const x = lab(a), y = lab(b);
-  return Math.hypot((x[0] - y[0]) * .5, x[1] - y[1], x[2] - y[2]);
+  const chromaX = Math.hypot(x[1], x[2]);
+  const chromaY = Math.hypot(y[1], y[2]);
+  // For colorful stickers, hue matters far more than how bright the photo is.
+  // For white/near-neutral stickers, brightness remains the useful signal.
+  if (Math.min(chromaX, chromaY) < .045) return Math.hypot((x[0] - y[0]) * 1.15, chromaX - chromaY);
+  const hueDistance = Math.hypot(x[1] / chromaX - y[1] / chromaY, x[2] / chromaX - y[2] / chromaY);
+  return Math.hypot((x[0] - y[0]) * .18, hueDistance * .13, (chromaX - chromaY) * .25);
 }
 export function classifyColor(red: number, green: number, blue: number, palette: string[] = []) {
   const sample = hex([red, green, blue]);
@@ -28,9 +36,26 @@ export function classifyColor(red: number, green: number, blue: number, palette:
 export function calibrateScan(faces: ScanFace[]): ScanFace[] {
   if (faces.length !== 6) return faces;
   const palette = faces.map((face) => (face.samples || face.stickers)[4]);
-  return orientScanFaces(faces.map((face) => ({ ...face, stickers: (face.samples || face.stickers).map((sample, index) => index === 4 ? palette[faces.indexOf(face)] : classifyColor(...rgb(sample) as [number, number, number], palette)) })));
+  const calibrated = faces.map((face) => ({ ...face, stickers: (face.samples || face.stickers).map((sample, index) => index === 4 ? palette[faces.indexOf(face)] : classifyColor(...rgb(sample) as [number, number, number], palette)) }));
+  return correctScanFaces(calibrated);
 }
 export type Crop = { x: number; y: number; size: number };
+function representativeColor(data: Uint8ClampedArray) {
+  const pixels: { rgb: number[]; lightness: number }[] = [];
+  for (let index = 0; index < data.length; index += 16) {
+    if (data[index + 3] < 200) continue;
+    const values = [data[index], data[index + 1], data[index + 2]];
+    pixels.push({ rgb: values, lightness: labFromRgb(values)[0] });
+  }
+  if (!pixels.length) return "#000000";
+  const sorted = [...pixels].sort((left, right) => left.lightness - right.lightness);
+  // Ignore the darkest and brightest 12%. Those are usually grid seams,
+  // shadows, reflections, or a center logo rather than sticker material.
+  const trim = Math.floor(sorted.length * .12);
+  const stable = sorted.slice(trim, Math.max(trim + 1, sorted.length - trim));
+  const median = (channel: number) => stable.map((pixel) => pixel.rgb[channel]).sort((a, b) => a - b)[Math.floor(stable.length / 2)];
+  return hex([median(0), median(1), median(2)]);
+}
 export function sampleImage(source: CanvasImageSource, canvas: HTMLCanvasElement, crop?: Crop) {
   canvas.width = canvas.height = 480;
   const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -39,11 +64,8 @@ export function sampleImage(source: CanvasImageSource, canvas: HTMLCanvasElement
   else context.drawImage(source, 0, 0, 480, 480);
   const stickers: string[] = [];
   for (let row = 0; row < 3; row++) for (let column = 0; column < 3; column++) {
-    const pixels = context.getImageData(column * 160 + 48, row * 160 + 48, 64, 64).data;
-    const channels: number[][] = [[], [], []];
-    for (let i = 0; i < pixels.length; i += 16) channels.forEach((channel, c) => channel.push(pixels[i + c]));
-    // Median suppresses small highlights, seams, and center logos.
-    stickers.push(hex(channels.map((channel) => channel.sort((a, b) => a - b)[Math.floor(channel.length / 2)])));
+    const pixels = context.getImageData(column * 160 + 50, row * 160 + 50, 60, 60).data;
+    stickers.push(representativeColor(pixels));
   }
   return stickers;
 }
@@ -154,17 +176,74 @@ function validatePhysicalState(faces: ScanFace[]): ScanIssue[] {
 // Search the small 4^6 space for a legal cubie arrangement and keep that orientation.
 export function orientScanFaces(faces: ScanFace[]) {
   if (faces.length !== 6 || new Set(faces.map((face) => face.code)).size !== 6 || faces.some((face) => face.stickers.length !== 9)) return faces;
-  let aligned: ScanFace[] | undefined;
+  let best = faces;
+  let fewestIssues = Number.POSITIVE_INFINITY;
   const tryOrientations = (index: number, candidate: ScanFace[]) => {
-    if (aligned) return;
     if (index === faces.length) {
-      if (validatePhysicalState(candidate).length === 0) aligned = candidate;
+      const issueCount = validatePhysicalState(candidate).length;
+      if (issueCount < fewestIssues) { best = candidate; fewestIssues = issueCount; }
       return;
     }
     for (let turns = 0; turns < 4; turns += 1) tryOrientations(index + 1, [...candidate, rotateScanFace(faces[index], turns)]);
   };
   tryOrientations(0, []);
-  return aligned || faces;
+  return best;
+}
+
+function balanceColorCounts(faces: ScanFace[]) {
+  const palette = faces.map((face) => face.stickers[4]);
+  const stickers = faces.map((face) => [...face.stickers]);
+  const count = () => palette.map((color) => stickers.flat().filter((sticker) => sticker === color).length);
+  let counts = count();
+  while (counts.some((value) => value > 9)) {
+    let best: { face: number; index: number; from: number; to: number; penalty: number } | undefined;
+    for (let face = 0; face < faces.length; face += 1) for (let index = 0; index < 9; index += 1) {
+      if (index === 4) continue;
+      const from = palette.indexOf(stickers[face][index]);
+      if (from < 0 || counts[from] <= 9) continue;
+      for (let to = 0; to < palette.length; to += 1) {
+        if (counts[to] >= 9) continue;
+        const sample = (faces[face].samples || faces[face].stickers)[index];
+        const penalty = colorDistance(sample, palette[to]) - colorDistance(sample, palette[from]);
+        if (!best || penalty < best.penalty) best = { face, index, from, to, penalty };
+      }
+    }
+    if (!best) break;
+    stickers[best.face][best.index] = palette[best.to];
+    counts = count();
+  }
+  return faces.map((face, index) => ({ ...face, stickers: stickers[index] }));
+}
+
+function swapToLegalState(faces: ScanFace[]) {
+  if (validatePhysicalState(faces).length === 0) return faces;
+  const locations = faces.flatMap((face, faceIndex) => face.stickers.map((_, index) => ({ faceIndex, index })).filter(({ index }) => index !== 4));
+  let best: ScanFace[] | undefined;
+  let bestPenalty = Number.POSITIVE_INFINITY;
+  for (let left = 0; left < locations.length; left += 1) for (let right = left + 1; right < locations.length; right += 1) {
+    const first = locations[left], second = locations[right];
+    const firstColor = faces[first.faceIndex].stickers[first.index], secondColor = faces[second.faceIndex].stickers[second.index];
+    if (firstColor === secondColor) continue;
+    const candidate = faces.map((face) => ({ ...face, stickers: [...face.stickers] }));
+    candidate[first.faceIndex].stickers[first.index] = secondColor;
+    candidate[second.faceIndex].stickers[second.index] = firstColor;
+    if (validatePhysicalState(candidate).length !== 0) continue;
+    const firstSample = (faces[first.faceIndex].samples || faces[first.faceIndex].stickers)[first.index];
+    const secondSample = (faces[second.faceIndex].samples || faces[second.faceIndex].stickers)[second.index];
+    const penalty = colorDistance(firstSample, secondColor) + colorDistance(secondSample, firstColor) - colorDistance(firstSample, firstColor) - colorDistance(secondSample, secondColor);
+    if (penalty < bestPenalty) { best = candidate; bestPenalty = penalty; }
+  }
+  return best || faces;
+}
+
+// Trust the majority of stickers: each center color must occur nine times. Then
+// repair only a small ambiguous swap when that is enough to restore a legal cube.
+export function correctScanFaces(faces: ScanFace[]) {
+  if (faces.length !== 6) return faces;
+  const corrected = swapToLegalState(orientScanFaces(balanceColorCounts(faces)));
+  if (validatePhysicalState(corrected).length !== 0) return faces;
+  const changed = corrected.some((face, index) => face.orientation || face.stickers.some((sticker, stickerIndex) => sticker !== faces[index].stickers[stickerIndex]));
+  return corrected.map((face) => ({ ...face, autoCorrected: Boolean(face.autoCorrected || changed) }));
 }
 
 export function validateScan(faces: ScanFace[]) {
