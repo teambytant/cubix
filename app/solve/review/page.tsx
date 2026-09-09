@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { FACE_COLORS, Face } from "@/lib/cube";
-import { SCAN_FACES, SCAN_STORAGE_KEY, ScanFace, validateScan } from "@/lib/scan";
+import { orientScanFaces, rotateStickers, SCAN_FACES, SCAN_STORAGE_KEY, ScanFace, validateScan } from "@/lib/scan";
 import Wordmark from "@/components/Wordmark";
 
 const defaults = Object.values(FACE_COLORS);
@@ -42,9 +42,10 @@ export default function ReviewPage() {
     const faceIndex = Math.floor(index / 9);
     const stickerIndex = index % 9;
     const code = labels[faceIndex];
-    const nextFaces = faces.map((face) => face.code === code
+    const editedFaces = faces.map((face) => face.code === code
       ? { ...face, stickers: face.stickers.map((color, sticker) => sticker === stickerIndex ? selected : color) }
       : face);
+    const nextFaces = orientScanFaces(editedFaces);
     setFaces(nextFaces);
     localStorage.setItem(SCAN_STORAGE_KEY, JSON.stringify(nextFaces));
     setSelectedSticker(index);
@@ -52,7 +53,7 @@ export default function ReviewPage() {
   }
 
   function rotateFace(code: Face) {
-    const nextFaces = faces.map((face) => face.code === code ? { ...face, stickers: [face.stickers[6], face.stickers[3], face.stickers[0], face.stickers[7], face.stickers[4], face.stickers[1], face.stickers[8], face.stickers[5], face.stickers[2]] } : face);
+    const nextFaces = orientScanFaces(faces.map((face) => face.code === code ? { ...face, stickers: rotateStickers(face.stickers), orientation: ((face.orientation || 0) + 1) % 4 } : face));
     setFaces(nextFaces);
     localStorage.setItem(SCAN_STORAGE_KEY, JSON.stringify(nextFaces));
     setActiveIssue(0);
@@ -83,6 +84,7 @@ export default function ReviewPage() {
           <div><h1>Does this<br /><em>look right?</em></h1><p>Each sticker was sampled in your browser. Select a color, then tap any sticker that looks wrong. Your six center stickers define the palette, including nonstandard colors. Add a missing shade with the color control.</p></div>
           <div className={`valid-state ${validation.valid ? "valid" : "invalid"}`}><i /> {validation.valid ? "STATE LOOKS VALID" : "REVIEW NEEDED"}<br /><span className="font-mono">{validation.valid ? "COLOR COUNTS MATCH" : `${validation.errors.length} CHECKS FAILED`}</span></div>
         </div>
+        {faces.some((face) => face.orientation) && <p className="orientation-notice">Cubix aligned the captured face rotations automatically. You can still rotate or rescan a face if it does not match your cube.</p>}
         <div className="net">
           <div className="net-face net-u">{stickers.slice(0, 9).map((color, index) => <button key={index} style={{ background: color }} className={stickerClass("U", index, index)} onClick={() => changeSticker(index)} aria-label={`Edit U sticker ${index + 1}`} />)}</div>
           <div className="net-row">{[1, 2, 3, 4].map((face) => { const code = labels[face]; return <div className="net-face" key={code}>{stickers.slice(face * 9, face * 9 + 9).map((color, index) => <button key={index} style={{ background: color }} className={stickerClass(code, index, face * 9 + index)} onClick={() => changeSticker(face * 9 + index)} aria-label={`Edit ${code} sticker ${index + 1}`} />)}</div>; })}</div>

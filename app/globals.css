@@ -186,6 +186,7 @@ footer p { color: #7e7d77; font-size: 12px; margin: 0 0 2px 13%; }
 .review-face-actions > span { color: #888780; font-size: 9px; margin-right: 8px; }
 .review-face-actions .button { min-width: 39px; padding: 9px 12px; }
 .review-face-actions .review-start-over { margin-left: 8px; }
+.orientation-notice { background: rgba(57,134,247,.1); border-left: 3px solid var(--blue); color: #355d97; font-size: 12px; line-height: 1.5; margin: 30px auto -35px; max-width: 650px; padding: 11px 13px; }
 .rotate-face-actions { border-top: 0; margin-top: 10px; padding-top: 0; }
 .rotate-face-actions .button { min-width: 54px; }
 .net-face button.sticker-attention { animation: attention-pulse 1.25s ease-in-out infinite; box-shadow: inset 0 0 0 4px var(--orange), 0 0 0 2px var(--paper); position: relative; z-index: 1; }
@@ -324,7 +325,7 @@ footer p { color: #7e7d77; font-size: 12px; margin: 0 0 2px 13%; }
   .hero-actions { align-items: stretch; flex-direction: column; gap: 16px; margin-top: 24px; max-width: 290px; }
   .hero-actions .button { align-items: center; justify-content: space-between; }
   .hero-actions .text-link { align-self: flex-start; }
-  .hero-note { margin-top: 31px; }
+  .hero-note { background: rgba(242,240,235,.92); border-left: 2px solid var(--orange); color: #4d4c46; font-size: 10px; letter-spacing: .075em; line-height: 1.55; margin-top: 28px; max-width: 250px; padding: 9px 10px; }
   .hero-cube-wrap { height: 350px; right: -12%; top: 49%; width: 112%; }
   .orbit-label { left: 13%; top: 2%; }
   .cube-caption { bottom: 5%; left: 12%; right: 18%; }
@@ -400,6 +401,7 @@ footer p { color: #7e7d77; font-size: 12px; margin: 0 0 2px 13%; }
   .review-face-actions > span { flex-basis: 100%; }
   .review-face-actions .button { min-height: 42px; }
   .review-face-actions .review-start-over { flex: 1; margin-left: 0; }
+  .orientation-notice { margin: 24px 0 -12px; }
   .rotate-face-actions .button { min-width: 61px; }
   .validation-errors { margin-top: 28px; }
   .review-next { justify-content: space-between; margin-top: 34px; width: 100%; }

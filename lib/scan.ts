@@ -1,6 +1,6 @@
 import { Face } from "./cube";
 
-export type ScanFace = { code: Face; name: string; stickers: string[]; samples?: string[]; source?: string };
+export type ScanFace = { code: Face; name: string; stickers: string[]; samples?: string[]; source?: string; orientation?: number };
 export const SCAN_STORAGE_KEY = "cubix-scan-state";
 export const SCAN_FACES: { code: Face; name: string }[] = [
   { code: "F", name: "Front" }, { code: "R", name: "Right" }, { code: "B", name: "Back" },
@@ -28,7 +28,7 @@ export function classifyColor(red: number, green: number, blue: number, palette:
 export function calibrateScan(faces: ScanFace[]): ScanFace[] {
   if (faces.length !== 6) return faces;
   const palette = faces.map((face) => (face.samples || face.stickers)[4]);
-  return faces.map((face) => ({ ...face, stickers: (face.samples || face.stickers).map((sample, index) => index === 4 ? palette[faces.indexOf(face)] : classifyColor(...rgb(sample) as [number, number, number], palette)) }));
+  return orientScanFaces(faces.map((face) => ({ ...face, stickers: (face.samples || face.stickers).map((sample, index) => index === 4 ? palette[faces.indexOf(face)] : classifyColor(...rgb(sample) as [number, number, number], palette)) })));
 }
 export type Crop = { x: number; y: number; size: number };
 export function sampleImage(source: CanvasImageSource, canvas: HTMLCanvasElement, crop?: Crop) {
@@ -71,6 +71,17 @@ const EDGE_COLORS: Face[][] = [
   ["U", "R"], ["U", "F"], ["U", "L"], ["U", "B"], ["D", "R"], ["D", "F"],
   ["D", "L"], ["D", "B"], ["F", "R"], ["F", "L"], ["B", "L"], ["B", "R"],
 ];
+
+export function rotateStickers(stickers: string[], turns = 1) {
+  let result = [...stickers];
+  for (let turn = 0; turn < (turns % 4 + 4) % 4; turn += 1) result = [result[6], result[3], result[0], result[7], result[4], result[1], result[8], result[5], result[2]];
+  return result;
+}
+
+function rotateScanFace(face: ScanFace, turns: number): ScanFace {
+  const normalizedTurns = (turns % 4 + 4) % 4;
+  return { ...face, stickers: rotateStickers(face.stickers, normalizedTurns), samples: face.samples ? rotateStickers(face.samples, normalizedTurns) : undefined, orientation: ((face.orientation || 0) + normalizedTurns) % 4 };
+}
 
 function permutationParity(permutation: number[]) {
   let inversions = 0;
@@ -137,6 +148,23 @@ function validatePhysicalState(faces: ScanFace[]): ScanIssue[] {
     issues.push({ message: "The highlighted pieces have an impossible swap. Check their stickers or rescan their faces.", stickers: stickerRefs(misplaced) });
   }
   return issues;
+}
+
+// Photos are often taken with one face turned 90°, 180°, or 270° in the guide.
+// Search the small 4^6 space for a legal cubie arrangement and keep that orientation.
+export function orientScanFaces(faces: ScanFace[]) {
+  if (faces.length !== 6 || new Set(faces.map((face) => face.code)).size !== 6 || faces.some((face) => face.stickers.length !== 9)) return faces;
+  let aligned: ScanFace[] | undefined;
+  const tryOrientations = (index: number, candidate: ScanFace[]) => {
+    if (aligned) return;
+    if (index === faces.length) {
+      if (validatePhysicalState(candidate).length === 0) aligned = candidate;
+      return;
+    }
+    for (let turns = 0; turns < 4; turns += 1) tryOrientations(index + 1, [...candidate, rotateScanFace(faces[index], turns)]);
+  };
+  tryOrientations(0, []);
+  return aligned || faces;
 }
 
 export function validateScan(faces: ScanFace[]) {
